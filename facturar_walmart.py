@@ -15,9 +15,11 @@ error te dice exactamente qué localizador no encontró nada, para que hagas
 click derecho > "Inspeccionar" sobre ese campo/botón y ajustes el XPath.
 """
 
+import os
 import sys
 import time
 
+from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
@@ -34,14 +36,27 @@ except ImportError:
 
 URL = "https://facturacion-clientes.walmart.com/"
 
-# ---------- Datos fijos ----------
-RFC = "CAFC730804DZ2"
-CODIGO_POSTAL = "83293"
-RAZON_SOCIAL = "CARLOS IVAN CHAVEZ FUENTES"
-CORREO = "cachavezf@gmail.com"
-REGIMEN_FISCAL = "Regimen Simplificado de Confianza"
-USO_FACTURA = "Gastos en general"
-FORMA_PAGO = "Tarjeta de crédito"
+# ---------- Datos fijos (desde .env, ver .env.example) ----------
+load_dotenv()
+
+VARS_REQUERIDAS = [
+    "RFC", "CODIGO_POSTAL", "RAZON_SOCIAL", "CORREO",
+    "REGIMEN_FISCAL", "USO_FACTURA", "FORMA_PAGO",
+]
+faltantes = [v for v in VARS_REQUERIDAS if not os.getenv(v)]
+if faltantes:
+    sys.exit(
+        f"Faltan variables en .env: {', '.join(faltantes)}. "
+        "Copia .env.example a .env y complétalo con tus datos."
+    )
+
+RFC = os.getenv("RFC")
+CODIGO_POSTAL = os.getenv("CODIGO_POSTAL")
+RAZON_SOCIAL = os.getenv("RAZON_SOCIAL")
+CORREO = os.getenv("CORREO")
+REGIMEN_FISCAL = os.getenv("REGIMEN_FISCAL")
+USO_FACTURA = os.getenv("USO_FACTURA")
+FORMA_PAGO = os.getenv("FORMA_PAGO")
 
 
 def esperar_y_click(driver, wait, xpath, descripcion):

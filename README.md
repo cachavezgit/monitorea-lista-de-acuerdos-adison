@@ -23,6 +23,25 @@ venv\Scripts\activate         # Windows
 pip install -r requirements.txt
 ```
 
+### Configurar tus datos
+
+Copia la plantilla y complétala con tus datos fiscales (este archivo `.env`
+no se sube a git):
+
+```bash
+cp .env.example .env
+```
+
+```
+RFC=
+CODIGO_POSTAL=
+RAZON_SOCIAL=
+CORREO=
+REGIMEN_FISCAL=
+USO_FACTURA=
+FORMA_PAGO=
+```
+
 ## Uso
 
 Con el entorno virtual activado:
