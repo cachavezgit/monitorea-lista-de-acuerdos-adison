@@ -107,6 +107,28 @@ def esperar_elemento(wait, xpath, descripcion):
         ) from exc
 
 
+def llenar_campo(wait, xpath, valor, descripcion, intentos=3):
+    """Escribe `valor` en el input y confirma que el valor quedó ahí; si no, reintenta.
+
+    Justo después de cerrarse el modal de "datos personales" la SPA a veces vuelve a
+    renderizar el formulario, lo que puede vaciar lo que ya se había escrito. Verificar
+    el valor final evita enviar el formulario con estos campos en blanco.
+    """
+    for intento in range(1, intentos + 1):
+        elemento = esperar_elemento(wait, xpath, descripcion)
+        elemento.clear()
+        elemento.send_keys(valor)
+        time.sleep(0.5)
+        if elemento.get_attribute("value") == valor:
+            return
+        if intento == intentos:
+            raise RuntimeError(
+                f"'{descripcion}' no conservó el valor tras {intentos} intentos "
+                f"(quedó: {elemento.get_attribute('value')!r})."
+            )
+        print(f"'{descripcion}' se vació después de escribirlo, reintentando ({intento}/{intentos})...")
+
+
 def seleccionar_opcion(driver, wait, select_xpath, texto, descripcion):
     """Selecciona `texto` en un <select>, esperando a que esa opción exista.
 
@@ -151,7 +173,7 @@ def crear_driver(headless: bool):
     return driver
 
 
-def facturar(numero_ticket: str, ultimos_4: str, headless: bool = False):
+def facturar(numero_ticket: str, ultimos_4: str, forma_pago: str = FORMA_PAGO, headless: bool = False):
     driver = crear_driver(headless)
     wait = WebDriverWait(driver, 20)
 
@@ -231,17 +253,12 @@ def facturar(numero_ticket: str, ultimos_4: str, headless: bool = False):
             print("No apareció el modal de datos personales (o ya estaba cerrado), continúo.")
 
         print("Llenando razón social, correo, régimen fiscal y uso de factura...")
-        razon_social_input = esperar_elemento(
-            wait, "//*[contains(text(),'Razón Social')]/following::input[1]", "Razón Social"
+        llenar_campo(
+            wait, "//*[contains(text(),'Razón Social')]/following::input[1]", RAZON_SOCIAL, "Razón Social"
         )
-        razon_social_input.clear()
-        razon_social_input.send_keys(RAZON_SOCIAL)
-
-        correo_input = esperar_elemento(
-            wait, "//*[contains(text(),'Correo Electr')]/following::input[1]", "Correo Electrónico"
+        llenar_campo(
+            wait, "//*[contains(text(),'Correo Electr')]/following::input[1]", CORREO, "Correo Electrónico"
         )
-        correo_input.clear()
-        correo_input.send_keys(CORREO)
 
         seleccionar_opcion(
             driver, wait, "//*[contains(text(),'Régimen Fiscal')]/following::select[1]",
@@ -268,7 +285,7 @@ def facturar(numero_ticket: str, ultimos_4: str, headless: bool = False):
         print("Seleccionando forma de pago...")
         seleccionar_opcion(
             driver, wait, "//*[contains(text(),'Forma de Pago')]/following::select[1]",
-            FORMA_PAGO, "Forma de Pago",
+            forma_pago, "Forma de Pago",
         )
 
         click_hasta_avanzar(
@@ -298,4 +315,7 @@ def facturar(numero_ticket: str, ultimos_4: str, headless: bool = False):
 if __name__ == "__main__":
     numero_ticket = input("Número largo del ticket: ").strip()
     ultimos_4 = input("Últimos 4 dígitos: ").strip()
-    facturar(numero_ticket, ultimos_4)
+    fue_tarjeta_credito = input("¿Fue con Tarjeta de Crédito? (S/N) default S: ").strip().upper() or "S"
+    forma_pago = "Tarjeta de crédito" if fue_tarjeta_credito == "S" else "Tarjeta de débito"
+
+    facturar(numero_ticket, ultimos_4, forma_pago=forma_pago)
