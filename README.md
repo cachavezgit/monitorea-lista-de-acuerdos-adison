@@ -1,62 +1,57 @@
-# selenium-facturar-walmart
+# selenium-monitoreo-lista-acuerdos
 
-Automatiza el proceso de facturación en https://facturacion-clientes.walmart.com/
-usando Selenium: llena el ticket, los datos fiscales y la forma de pago hasta
-generar la factura.
+Monitorea la [Lista de Acuerdos de ADISON](https://adison.stjsonora.gob.mx/Publicacion/ListaAcuerdos/)
+(Poder Judicial del Estado de Sonora) para un expediente y avisa cuando se publica
+un acuerdo nuevo. Expediente configurado en `.env`: **Exp. 649/2025, Juzgado
+Tercero de Primera Instancia de lo Familiar de Hermosillo**.
 
-## Requisitos
-
-- Python 3.8+
-- Google Chrome instalado
+No abre navegador: llama directamente al mismo endpoint que usa la página
+(`/Controller/ActionController.php`, acción `BuscarByAsunto`).
 
 ## Instalación
 
 ```bash
-# Crear entorno virtual
 python3 -m venv venv
-
-# Activar el entorno virtual
-source venv/bin/activate      # macOS / Linux
-venv\Scripts\activate         # Windows
-
-# Instalar dependencias
+source venv/bin/activate
 pip install -r requirements.txt
-```
-
-### Configurar tus datos
-
-Copia la plantilla y complétala con tus datos fiscales (este archivo `.env`
-no se sube a git):
-
-```bash
-cp .env.example .env
-```
-
-```
-RFC=
-CODIGO_POSTAL=
-RAZON_SOCIAL=
-CORREO=
-REGIMEN_FISCAL=
-USO_FACTURA=
-FORMA_PAGO=
 ```
 
 ## Uso
 
-Con el entorno virtual activado:
-
 ```bash
-python3 facturar_walmart.py
+python3 monitorear_expediente.py             # revisa una vez y termina
+python3 monitorear_expediente.py --cada 30   # revisa cada 30 minutos (Ctrl+C para salir)
 ```
 
-El script te pedirá el número largo del ticket y los últimos 4 dígitos, abrirá
-Chrome y completará el flujo de facturación automáticamente. Si algún paso
-falla, el navegador se queda abierto y la terminal indica exactamente qué
-campo o botón no se encontró.
+- La **primera corrida** guarda los acuerdos actuales como base en
+  `estado_<unidad>_<asunto>_<año>_<bis>.json` (no se sube a git).
+- Las siguientes corridas comparan contra esa base e imprimen los acuerdos
+  **nuevos** o **modificados**, con el link al expediente, y muestran una
+  notificación de macOS con sonido.
+- Si borras el archivo de estado, la siguiente corrida vuelve a tomar la base.
 
-Para salir del entorno virtual cuando termines:
+### Correrlo automáticamente con cron
 
-```bash
-deactivate
+`crontab -e` y agrega (revisa cada hora entre 8:00 y 20:00, de lunes a viernes):
+
 ```
+0 8-20 * * 1-5 cd /ruta/al/proyecto && venv/wilsonenv/bin/python3 monitorear_expediente.py >> monitoreo.log 2>&1
+```
+
+## Monitorear otro expediente
+
+Edita las variables `ADISON_*` en `.env` (este archivo sí se sube a git porque no
+tiene secretos; cualquier token o contraseña va en `.env.local`, que no se sube).
+Los IDs se
+obtienen de los `<select>` del formulario en la página (clic derecho >
+Inspeccionar):
+
+| Variable | Campo en la página | Ejemplo |
+|---|---|---|
+| `ADISON_ID_UNIDAD` | `value` del Órgano Jurisdiccional | `157` |
+| `ADISON_ID_GRUPO_RAMO` | `data-value` del Ramo | `1` (FAMILIAR) |
+| `ADISON_ID_CAT_RAMO` | `value` del Ramo (solo para el link) | `2` (FAMILIAR) |
+| `ADISON_ID_TIPO_ASUNTO` | `value` del Tipo Asunto | `1` (EXPEDIENTE) |
+| `ADISON_ASUNTO` / `ADISON_ANIO` | No. de asunto | `649` / `2025` |
+| `ADISON_BIS` | `value` de Bis (0 = vacío) | `0` |
+

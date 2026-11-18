@@ -17,5 +17,9 @@ __pycache__/
 # Logs
 *.log
 
-# Datos sensibles
-.env
+# Datos sensibles (tokens, contraseñas). El .env con los datos
+# del expediente SÍ se sube a git.
+.env.local
+
+# Estado del monitoreo (acuerdos ya vistos)
+estado_*.json
