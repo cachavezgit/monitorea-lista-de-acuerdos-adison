@@ -22,7 +22,9 @@ En cada revisión:
 2. Los compara contra los de la revisión anterior, guardados en
    `estado_<unidad>_<asunto>_<año>_<bis>.json`.
 3. Si hay acuerdos **nuevos** o **modificados**, los imprime con el link al
-   expediente y lanza una notificación (en macOS, con sonido).
+   expediente y avisa:
+   - por **WhatsApp**, si está configurado (ver [Avisos por WhatsApp](#avisos-por-whatsapp)),
+   - con una notificación del sistema si corre en macOS.
 
 La primera vez solo guarda los acuerdos actuales como punto de partida, sin
 avisar. Si borras el archivo de estado, vuelve a tomar el punto de partida.
@@ -110,8 +112,39 @@ Para **monitorear otro expediente**, cambia estos valores. Los IDs salen de los
 
 ### `.env.local` — secretos (no se sube a git)
 
-Tokens o contraseñas (por ejemplo, para avisos por Telegram) van en
-`.env.local`. Si existe, sus valores tienen prioridad sobre los de `.env`.
+Tu número y la apikey de WhatsApp van en `.env.local` (plantilla en
+`.env.local.example`). Si existe, sus valores tienen prioridad sobre los de `.env`.
+
+## Avisos por WhatsApp
+
+Se usa [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/),
+un servicio gratuito (no oficial) para mandarte mensajes a tu propio WhatsApp.
+
+1. Sigue las instrucciones de la página de CallMeBot: agrega su número a tus
+   contactos y mándale por WhatsApp el mensaje de activación que indica. Te
+   responde con tu **apikey**.
+2. Crea `.env.local` y llénalo:
+
+   ```bash
+   cp .env.local.example .env.local
+   nano .env.local
+   ```
+
+   ```
+   WHATSAPP_TELEFONO=+52XXXXXXXXXX
+   WHATSAPP_APIKEY=1234567
+   ```
+
+3. Prueba que llegue:
+
+   ```bash
+   venv/bin/python3 monitorear_expediente.py --probar-whatsapp
+   ```
+
+Cuando hay un acuerdo nuevo llega un mensaje con la fecha, la síntesis y el link
+al expediente. Si el envío falla (sin internet, CallMeBot caído), el cambio no
+se marca como visto y se reintenta en la siguiente revisión, para no perder el
+aviso.
 
 ## Archivos
 
@@ -119,7 +152,8 @@ Tokens o contraseñas (por ejemplo, para avisos por Telegram) van en
 |---|---|
 | `monitorear_expediente.py` | Script principal |
 | `.env` | Datos del expediente a monitorear |
-| `.env.local` | Secretos (opcional, ignorado por git) |
+| `.env.local` | Teléfono y apikey de WhatsApp (ignorado por git) |
+| `.env.local.example` | Plantilla de `.env.local` |
 | `estado_*.json` | Acuerdos ya vistos (se genera solo, ignorado por git) |
 | `monitoreo.log` | Salida de cron (si lo configuras así, ignorado por git) |
 | `requirements.txt` | Dependencias: `requests`, `python-dotenv` |

@@ -157,6 +157,41 @@ def notificar(titulo, mensaje):
     subprocess.run(["osascript", "-e", script], check=False)
 
 
+WHATSAPP_TELEFONO = (os.getenv("WHATSAPP_TELEFONO") or "").strip()
+WHATSAPP_APIKEY = (os.getenv("WHATSAPP_APIKEY") or "").strip()
+
+
+def whatsapp_configurado():
+    return bool(WHATSAPP_TELEFONO and WHATSAPP_APIKEY)
+
+
+def enviar_whatsapp(texto):
+    """Envía `texto` a tu propio WhatsApp vía CallMeBot (https://www.callmebot.com).
+
+    Requiere WHATSAPP_TELEFONO y WHATSAPP_APIKEY en .env.local. Lanza excepción si falla.
+    """
+    resp = requests.get(
+        "https://api.callmebot.com/whatsapp.php",
+        params={"phone": WHATSAPP_TELEFONO, "text": texto, "apikey": WHATSAPP_APIKEY},
+        headers=HEADERS,
+        timeout=60,
+    )
+    # CallMeBot responde 200 incluso en algunos errores; el detalle viene en el cuerpo.
+    cuerpo = resp.text.lower()
+    if resp.status_code != 200 or "error" in cuerpo or "invalid" in cuerpo:
+        raise RuntimeError(f"CallMeBot respondió {resp.status_code}: {resp.text.strip()[:300]}")
+
+
+def mensaje_whatsapp(nuevos, modificados):
+    lineas = [f"📋 *Exp. {EXPEDIENTE}* - cambios en la Lista de Acuerdos"]
+    for etiqueta, grupo in (("🆕 Nuevo", nuevos), ("✏️ Modificado", modificados)):
+        for a in grupo:
+            sintesis = " ".join((a.get("Sintesis") or "").split())[:300]
+            lineas.append(f"\n{etiqueta} · {fecha_corta(a.get('Fecha'))}\n{sintesis}")
+    lineas.append(f"\nVer: {LINK_EXPEDIENTE}")
+    return "\n".join(lineas)
+
+
 def revisar(mostrar_lista=True):
     """Consulta el sitio, compara contra la última revisión y reporta cambios.
 
@@ -202,6 +237,16 @@ def revisar(mostrar_lista=True):
         mensaje = f"{len(cambios)} cambios. Último: {(cambios[-1].get('Sintesis') or '').strip()[:100]}"
     notificar(f"Nuevo acuerdo · Exp. {EXPEDIENTE}", mensaje)
 
+    if whatsapp_configurado():
+        try:
+            enviar_whatsapp(mensaje_whatsapp(nuevos, modificados))
+            print("  Aviso enviado por WhatsApp.")
+        except Exception as exc:
+            # No guardamos el estado: así la próxima revisión vuelve a detectar
+            # el cambio y reintenta el aviso, en vez de perderlo.
+            print(f"  ERROR al enviar WhatsApp (se reintenta en la próxima revisión): {exc}", file=sys.stderr)
+            return True
+
     guardar_estado(acuerdos)
     return True
 
@@ -210,7 +255,20 @@ def main():
     parser = argparse.ArgumentParser(description="Monitorea un expediente en la Lista de Acuerdos de ADISON.")
     parser.add_argument("--cada", type=float, metavar="MINUTOS",
                         help="repetir la revisión cada N minutos (si se omite, revisa una sola vez)")
+    parser.add_argument("--probar-whatsapp", action="store_true",
+                        help="envía un mensaje de prueba por WhatsApp y termina")
     args = parser.parse_args()
+
+    if args.probar_whatsapp:
+        if not whatsapp_configurado():
+            sys.exit("Falta WHATSAPP_TELEFONO y/o WHATSAPP_APIKEY en .env.local (ver .env.local.example).")
+        try:
+            enviar_whatsapp(f"✅ Prueba del monitor de la Lista de Acuerdos (Exp. {EXPEDIENTE}). "
+                            "Si lees esto, los avisos por WhatsApp funcionan.")
+        except Exception as exc:
+            sys.exit(f"ERROR al enviar WhatsApp: {exc}")
+        print("Mensaje de prueba enviado por WhatsApp.")
+        return
 
     if not args.cada:
         try:
