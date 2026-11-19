@@ -2,12 +2,8 @@
 
 Revisa la [Lista de Acuerdos de ADISON](https://adison.stjsonora.gob.mx/Publicacion/ListaAcuerdos/)
 del Poder Judicial del Estado de Sonora para un expediente, muestra sus acuerdos
-y avisa cuando se publica uno nuevo.
-
-Expediente configurado actualmente en `.env`:
-
-> **Exp. 649/2025** — Juzgado Tercero de Primera Instancia de lo Familiar de Hermosillo
-> (Ramo Familiar, Acuerdos por asunto)
+y avisa cuando se publica uno nuevo. El expediente a monitorear se configura en
+`.env` (ver [Configuración](#configuración)).
 
 ## Cómo funciona
 
@@ -55,16 +51,22 @@ venv/bin/python3 monitorear_expediente.py --cada 30   # revisa cada 30 min (Ctrl
 Ejemplo de salida:
 
 ```
-[2026-11-18 16:42] Sin cambios en Exp. 649/2025 (11 acuerdos).
+[AAAA-MM-DD HH:MM] Sin cambios en Exp. <asunto>/<año> (<n> acuerdos).
 +-------------------+--------------------------+--------------------------+------------------------------------------+
 | Fecha Publicación | Secretaría               | Partes                   | Síntesis                                 |
 +===================+==========================+==========================+==========================================+
-| 09-Jul-2025       | SECRETARIA PRIMERA “A”   | ORAL DE ALIMENTOS.-      | Se radica.-                              |
+| DD-Mmm-AAAA       | <secretaría>             | <partes>                 | <síntesis del acuerdo>                   |
 +-------------------+--------------------------+--------------------------+------------------------------------------+
-| ...               |                          |                          |                                          |
+| ...               | ...                      | ...                      | ...                                      |
 +-------------------+--------------------------+--------------------------+------------------------------------------+
-| 03-Nov-2026       | SECRETARIA PRIMERA “A”   | ORAL DE ALIMENTOS.       | se recibe exhorto diligenciado.-574      |
-+-------------------+--------------------------+--------------------------+------------------------------------------+
+```
+
+Cuando hay cambios, además de la tabla:
+
+```
+[AAAA-MM-DD HH:MM] ¡Cambios en Exp. <asunto>/<año>!
+  NUEVO:      AAAA-MM-DD  [<secretaría>]  <síntesis del acuerdo>
+  Ver: https://adison.stjsonora.gob.mx/Publicacion/ListaAcuerdos/?IdUnidad=...
 ```
 
 - Una sola revisión siempre imprime la tabla completa.
@@ -92,13 +94,13 @@ tail -f monitoreo.log
 
 ### `.env` — expediente a monitorear (sí se sube a git)
 
-| Variable | Qué es | Valor actual |
+| Variable | Qué es | Ejemplo |
 |---|---|---|
 | `ADISON_ID_UNIDAD` | `value` del Órgano Jurisdiccional | `157` (Juzgado 3º Familiar Hermosillo) |
 | `ADISON_ID_GRUPO_RAMO` | `data-value` del Ramo | `1` (FAMILIAR) |
 | `ADISON_ID_CAT_RAMO` | `value` del Ramo (solo para armar el link) | `2` (FAMILIAR) |
 | `ADISON_ID_TIPO_ASUNTO` | `value` del Tipo Asunto | `1` (EXPEDIENTE) |
-| `ADISON_ASUNTO` | Número de asunto | `649` |
+| `ADISON_ASUNTO` | Número de asunto | `123` |
 | `ADISON_ANIO` | Año del asunto | `2025` |
 | `ADISON_BIS` | `value` de Bis (`0` = vacío, `1` = BIS, `3` = TER…) | `0` |
 
