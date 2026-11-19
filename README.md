@@ -156,7 +156,42 @@ un servicio gratuito (no oficial) para mandarte mensajes a tu propio WhatsApp.
    ```
 
 Cuando hay un acuerdo nuevo llega un mensaje con la fecha, la síntesis y el link
-al expediente. Si el envío falla (sin internet, CallMeBot caído), el cambio no
+al expediente.
+
+### Resumen a mediodía y al final del día
+
+`--resumen` hace una revisión y manda por WhatsApp lo que pasó desde el resumen
+anterior: si hubo cambios (y a qué hora se detectaron), cuántas revisiones
+funcionaron y si hubo errores. Agrega estas líneas a `crontab -e`:
+
+```
+0 12 * * 1-5 cd /ruta/al/proyecto && /ruta/al/venv/bin/python3 monitorear_expediente.py --resumen >> monitoreo.log 2>&1
+0 22 * * 1-5 cd /ruta/al/proyecto && /ruta/al/venv/bin/python3 monitorear_expediente.py --resumen >> monitoreo.log 2>&1
+```
+
+Ejemplos:
+
+```
+📋 Exp. <asunto>/<año> · Resumen 12:00
+✅ Sin cambios desde 17-Nov 22:00.
+Revisiones: 10 correctas.
+Última revisión correcta: 12:00 · <n> acuerdos en total.
+```
+
+```
+📋 Exp. <asunto>/<año> · Resumen 22:00
+🆕 Hubo 1 cambio(s) desde 12:00:
+• 14:00 · Nuevo (DD-Mmm-AAAA): <síntesis del acuerdo>
+Revisiones: 19 correctas, ⚠️ 1 con error (el último a las 13:30: Read timed out).
+```
+
+Si un resumen esperado **no llega**, la Raspberry Pi está apagada, sin internet
+o cron no está corriendo. Si llega con "⚠️ No hubo revisiones", cron no está
+ejecutando las revisiones cada 30 minutos.
+
+El resultado de cada revisión se guarda en `historial_*.json` (últimos 8 días,
+no se sube a git). Un candado (`.monitor.lock`) evita que la revisión y el
+resumen corran al mismo tiempo. Si el envío falla (sin internet, CallMeBot caído), el cambio no
 se marca como visto y se reintenta en la siguiente revisión, para no perder el
 aviso.
 
@@ -169,5 +204,6 @@ aviso.
 | `.env.local` | Teléfono y apikey de WhatsApp (ignorado por git) |
 | `.env.local.example` | Plantilla de `.env.local` |
 | `estado_*.json` | Acuerdos ya vistos (se genera solo, ignorado por git) |
+| `historial_*.json` | Resultado de cada revisión, para el resumen (ignorado por git) |
 | `monitoreo.log` | Salida de cron (si lo configuras así, ignorado por git) |
 | `requirements.txt` | Dependencias: `requests`, `python-dotenv` |

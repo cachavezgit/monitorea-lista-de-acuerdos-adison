@@ -23,3 +23,7 @@ __pycache__/
 
 # Estado del monitoreo (acuerdos ya vistos)
 estado_*.json
+
+# Historial de revisiones (para el resumen) y lock de ejecución
+historial_*.json
+.monitor.lock

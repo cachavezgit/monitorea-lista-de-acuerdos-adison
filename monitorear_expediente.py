@@ -23,7 +23,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -58,9 +58,11 @@ CONSULTA = {campo: os.getenv(var).strip() for campo, var in VARIABLES.items()}
 ID_CAT_RAMO = os.getenv("ADISON_ID_CAT_RAMO").strip()  # solo para armar el link
 
 EXPEDIENTE = f"{CONSULTA['Asunto']}/{CONSULTA['Anio']}"
-ARCHIVO_ESTADO = CARPETA / (
-    f"estado_{CONSULTA['IdUnidad']}_{CONSULTA['Asunto']}_{CONSULTA['Anio']}_{CONSULTA['Bis']}.json"
-)
+_SUFIJO = f"{CONSULTA['IdUnidad']}_{CONSULTA['Asunto']}_{CONSULTA['Anio']}_{CONSULTA['Bis']}.json"
+ARCHIVO_ESTADO = CARPETA / f"estado_{_SUFIJO}"        # acuerdos ya vistos
+ARCHIVO_HISTORIAL = CARPETA / f"historial_{_SUFIJO}"  # resultado de cada revisión, para el resumen
+ARCHIVO_LOCK = CARPETA / ".monitor.lock"
+DIAS_HISTORIAL = 8
 LINK_EXPEDIENTE = (
     f"{PAGINA_URL}?IdUnidad={CONSULTA['IdUnidad']}&IdCatTipoAsunto={CONSULTA['IdCatTipoAsunto']}"
     f"&Asunto={CONSULTA['Asunto']}&Anio={CONSULTA['Anio']}&Bis={CONSULTA['Bis']}&IdCatRamo={ID_CAT_RAMO}"
@@ -198,6 +200,124 @@ def mensaje_whatsapp(nuevos, modificados):
     return "\n".join(lineas)
 
 
+# ---------- Historial de revisiones (para el resumen por WhatsApp) ----------
+
+def cargar_historial():
+    if not ARCHIVO_HISTORIAL.exists():
+        return {"ultimo_resumen": None, "revisiones": []}
+    return json.loads(ARCHIVO_HISTORIAL.read_text(encoding="utf-8"))
+
+
+def guardar_historial(historial):
+    ARCHIVO_HISTORIAL.write_text(json.dumps(historial, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def registrar_revision(ok, total=None, cambios=None, error=None):
+    """Anota el resultado de una revisión. Nunca lanza excepción (no debe tumbar el monitor)."""
+    try:
+        historial = cargar_historial()
+        limite = (datetime.now() - timedelta(days=DIAS_HISTORIAL)).isoformat(timespec="seconds")
+        historial["revisiones"] = [r for r in historial["revisiones"] if r["hora"] >= limite]
+        historial["revisiones"].append({
+            "hora": datetime.now().isoformat(timespec="seconds"),
+            "ok": ok,
+            "total": total,
+            "cambios": cambios or [],
+            "error": error,
+        })
+        guardar_historial(historial)
+    except Exception as exc:
+        print(f"  (no se pudo escribir el historial: {exc})", file=sys.stderr)
+
+
+def describir_cambios(nuevos, modificados):
+    return (
+        [{"tipo": "Nuevo", "fecha": a.get("Fecha"), "sintesis": " ".join((a.get("Sintesis") or "").split())}
+         for a in nuevos]
+        + [{"tipo": "Modificado", "fecha": a.get("Fecha"), "sintesis": " ".join((a.get("Sintesis") or "").split())}
+           for a in modificados]
+    )
+
+
+def hora_legible(iso, referencia=None):
+    """'2026-11-18T13:00:00' -> '13:00' si es el mismo día que `referencia`, si no '18-Nov 13:00'."""
+    dt = datetime.fromisoformat(iso)
+    referencia = referencia or datetime.now()
+    if dt.date() == referencia.date():
+        return dt.strftime("%H:%M")
+    return f"{dt.day:02d}-{MESES[dt.month - 1]} {dt:%H:%M}"
+
+
+def armar_resumen(historial, ahora=None):
+    ahora = ahora or datetime.now()
+    revisiones = historial["revisiones"]
+    desde = historial.get("ultimo_resumen") or (revisiones[0]["hora"] if revisiones else None)
+    periodo = [r for r in revisiones if desde is None or r["hora"] > desde]
+    if historial.get("ultimo_resumen") is None and revisiones:
+        periodo = revisiones  # primer resumen: incluye todo lo registrado
+
+    correctas = [r for r in periodo if r["ok"]]
+    errores = [r for r in periodo if not r["ok"]]
+    cambios = [(r["hora"], c) for r in correctas for c in r["cambios"]]
+    if historial.get("ultimo_resumen"):
+        desde_txt = hora_legible(desde, ahora)
+    elif desde:
+        desde_txt = f"que empezó el registro ({hora_legible(desde, ahora)})"
+    else:
+        desde_txt = "el inicio"
+
+    lineas = [f"📋 *Exp. {EXPEDIENTE}* · Resumen {ahora:%H:%M}"]
+    if not periodo:
+        lineas.append(f"⚠️ No hubo revisiones desde {desde_txt}. Revisa la Raspberry Pi / cron.")
+    elif cambios:
+        lineas.append(f"🆕 Hubo {len(cambios)} cambio(s) desde {desde_txt}:")
+        for hora, c in cambios:
+            lineas.append(f"• {hora_legible(hora, ahora)} · {c['tipo']} ({fecha_corta(c['fecha'])}): {c['sintesis'][:200]}")
+    else:
+        lineas.append(f"✅ Sin cambios desde {desde_txt}.")
+
+    if periodo:
+        detalle = f"Revisiones: {len(correctas)} correcta{'s' if len(correctas) != 1 else ''}"
+        if errores:
+            ultimo = errores[-1]
+            detalle += (f", ⚠️ {len(errores)} con error (el último a las {hora_legible(ultimo['hora'], ahora)}: "
+                        f"{(ultimo['error'] or '')[:120]})")
+        lineas.append(detalle + ".")
+    ultima_ok = next((r for r in reversed(revisiones) if r["ok"]), None)
+    if ultima_ok:
+        lineas.append(f"Última revisión correcta: {hora_legible(ultima_ok['hora'], ahora)} · "
+                      f"{ultima_ok['total']} acuerdos en total.")
+    if cambios:
+        lineas.append(f"Ver: {LINK_EXPEDIENTE}")
+    return "\n".join(lineas)
+
+
+def enviar_resumen():
+    """Revisa una vez más, arma el resumen desde el último enviado y lo manda por WhatsApp."""
+    try:
+        revisar(mostrar_lista=False)
+    except Exception as exc:
+        print(f"[{datetime.now():%Y-%m-%d %H:%M}] ERROR al revisar: {exc}", file=sys.stderr)
+        registrar_revision(ok=False, error=str(exc)[:300])
+
+    historial = cargar_historial()
+    texto = armar_resumen(historial)
+    print(f"[{datetime.now():%Y-%m-%d %H:%M}] Resumen:\n{texto}")
+
+    if not whatsapp_configurado():
+        print("  (WhatsApp no configurado en .env.local; el resumen solo se imprimió)")
+        return
+    try:
+        enviar_whatsapp(texto)
+    except Exception as exc:
+        # No se marca como enviado: el siguiente resumen cubrirá también este periodo.
+        print(f"  ERROR al enviar el resumen por WhatsApp: {exc}", file=sys.stderr)
+        sys.exit(1)
+    historial["ultimo_resumen"] = datetime.now().isoformat(timespec="seconds")
+    guardar_historial(historial)
+    print("  Resumen enviado por WhatsApp.")
+
+
 def revisar(mostrar_lista=True):
     """Consulta el sitio, compara contra la última revisión y reporta cambios.
 
@@ -211,6 +331,7 @@ def revisar(mostrar_lista=True):
 
     if estado is None:
         guardar_estado(acuerdos)
+        registrar_revision(ok=True, total=len(acuerdos))
         print(f"[{ahora}] Primera revisión del Exp. {EXPEDIENTE}: {len(acuerdos)} acuerdos guardados como base.")
         imprimir_tabla(acuerdos)
         return False
@@ -224,6 +345,7 @@ def revisar(mostrar_lista=True):
     ]
 
     if not nuevos and not modificados:
+        registrar_revision(ok=True, total=len(acuerdos))
         print(f"[{ahora}] Sin cambios en Exp. {EXPEDIENTE} ({len(acuerdos)} acuerdos).")
         if mostrar_lista:
             imprimir_tabla(acuerdos)
@@ -251,9 +373,11 @@ def revisar(mostrar_lista=True):
             # No guardamos el estado: así la próxima revisión vuelve a detectar
             # el cambio y reintenta el aviso, en vez de perderlo.
             print(f"  ERROR al enviar WhatsApp (se reintenta en la próxima revisión): {exc}", file=sys.stderr)
+            registrar_revision(ok=False, error=f"No se pudo enviar el aviso por WhatsApp: {exc}"[:300])
             return True
 
     guardar_estado(acuerdos)
+    registrar_revision(ok=True, total=len(acuerdos), cambios=describir_cambios(nuevos, modificados))
     return True
 
 
@@ -263,7 +387,19 @@ def main():
                         help="repetir la revisión cada N minutos (si se omite, revisa una sola vez)")
     parser.add_argument("--probar-whatsapp", action="store_true",
                         help="envía un mensaje de prueba por WhatsApp y termina")
+    parser.add_argument("--resumen", action="store_true",
+                        help="revisa y envía por WhatsApp el resumen desde el último resumen enviado")
     args = parser.parse_args()
+
+    # Evita que dos ejecuciones (p.ej. la revisión de cron y el resumen a la misma
+    # hora) lean/escriban los archivos de estado al mismo tiempo y avisen doble.
+    import fcntl
+    lock = open(ARCHIVO_LOCK, "w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+
+    if args.resumen:
+        enviar_resumen()
+        return
 
     if args.probar_whatsapp:
         if not whatsapp_configurado():
@@ -283,6 +419,7 @@ def main():
             revisar(mostrar_lista=sys.stdout.isatty())
         except Exception as exc:
             print(f"[{datetime.now():%Y-%m-%d %H:%M}] ERROR al revisar: {exc}", file=sys.stderr)
+            registrar_revision(ok=False, error=str(exc)[:300])
             sys.exit(1)
         return
 
@@ -296,6 +433,7 @@ def main():
         except Exception as exc:  # un fallo de red no debe detener el monitoreo
             print(f"[{datetime.now():%Y-%m-%d %H:%M}] ERROR al revisar (se reintenta en la próxima vuelta): {exc}",
                   file=sys.stderr)
+            registrar_revision(ok=False, error=str(exc)[:300])
         try:
             time.sleep(args.cada * 60)
         except KeyboardInterrupt:
