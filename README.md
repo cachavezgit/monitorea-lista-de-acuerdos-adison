@@ -83,11 +83,25 @@ minutos de 7:00 a 21:59, de lunes a viernes:
 */30 7-21 * * 1-5 cd /home/pi/monitoreo-lista-acuerdos && venv/bin/python3 monitorear_expediente.py >> monitoreo.log 2>&1
 ```
 
-Para ver el historial de revisiones:
+### Revisar que esté sano
+
+Desde cron cada revisión deja **una línea con fecha y hora** en `monitoreo.log`
+(la tabla completa solo se escribe cuando hay cambios):
+
+```
+[2026-11-18 18:30] Sin cambios en Exp. <asunto>/<año> (<n> acuerdos).
+[2026-11-18 19:00] ERROR al revisar: <detalle del error>
+[2026-11-18 19:30] ¡Cambios en Exp. <asunto>/<año>!
+```
 
 ```bash
-tail -f monitoreo.log
+tail -5 monitoreo.log            # últimas revisiones (debe haber una cada 30 min)
+grep ERROR monitoreo.log | tail  # últimos errores
+grep "Cambios" monitoreo.log     # cuándo hubo acuerdos nuevos
 ```
+
+Un error aislado (sin internet, sitio caído) no es problema: la siguiente
+revisión lo intenta de nuevo y no se pierde ningún acuerdo.
 
 > El script carga `.env` desde su propia carpeta, así que funciona aunque cron
 > lo ejecute desde otro directorio.

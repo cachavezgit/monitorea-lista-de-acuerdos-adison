@@ -277,10 +277,13 @@ def main():
         return
 
     if not args.cada:
+        # En terminal se muestra siempre la tabla; desde cron (salida a un archivo)
+        # solo cuando hay cambios, para que el log quede con una línea por revisión.
         try:
-            revisar()
+            revisar(mostrar_lista=sys.stdout.isatty())
         except Exception as exc:
-            sys.exit(f"ERROR al revisar: {exc}")
+            print(f"[{datetime.now():%Y-%m-%d %H:%M}] ERROR al revisar: {exc}", file=sys.stderr)
+            sys.exit(1)
         return
 
     print(f"Monitoreando Exp. {EXPEDIENTE} cada {args.cada:g} min. Ctrl+C para salir.")
