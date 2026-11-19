@@ -157,7 +157,13 @@ def notificar(titulo, mensaje):
     subprocess.run(["osascript", "-e", script], check=False)
 
 
-WHATSAPP_TELEFONO = (os.getenv("WHATSAPP_TELEFONO") or "").strip()
+def normalizar_telefono(numero):
+    """Deja solo dígitos y antepone '+' (CallMeBot espera formato internacional)."""
+    digitos = "".join(c for c in (numero or "") if c.isdigit())
+    return f"+{digitos}" if digitos else ""
+
+
+WHATSAPP_TELEFONO = normalizar_telefono(os.getenv("WHATSAPP_TELEFONO"))
 WHATSAPP_APIKEY = (os.getenv("WHATSAPP_APIKEY") or "").strip()
 
 
