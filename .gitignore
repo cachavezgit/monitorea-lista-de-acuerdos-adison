@@ -17,5 +17,13 @@ __pycache__/
 # Logs
 *.log
 
-# Datos sensibles
+# Datos sensibles: expedientes (.env) y WhatsApp (.env.local)
 .env
+.env.local
+
+# Estado del monitoreo (acuerdos ya vistos)
+estado_*.json
+
+# Historial de revisiones (para el resumen) y lock de ejecución
+historial_*.json
+.monitor.lock
